@@ -3,9 +3,11 @@ package ordering
 import (
 	"context"
 
+	"eda-in-golang/internal/ddd"
 	"eda-in-golang/internal/monolith"
 	"eda-in-golang/ordering/internal/application"
 	"eda-in-golang/ordering/internal/grpc"
+	"eda-in-golang/ordering/internal/handlers"
 	"eda-in-golang/ordering/internal/logging"
 	"eda-in-golang/ordering/internal/postgres"
 	"eda-in-golang/ordering/internal/rest"
@@ -26,10 +28,14 @@ func (Module) Startup(ctx context.Context, mono monolith.Monolith) error {
 	shopping := grpc.NewShoppingListRepository(conn)
 	notifications := grpc.NewNotificationRepository(conn)
 
+	domainDispatcher := ddd.NewEventDispatcher()
+
 	// setup application
 	var app application.App
-	app = application.New(orders, customers, payments, invoices, shopping, notifications)
+	app = application.New(orders, customers, payments, invoices, shopping, notifications, domainDispatcher)
 	app = logging.NewApplication(app, mono.Logger())
+
+	notificationHandlers := application.NewNotificationHandlers(notifications)
 
 	// setup Driver adapters
 	if err := grpc.RegisterServer(app, mono.RPC()); err != nil {
@@ -41,6 +47,8 @@ func (Module) Startup(ctx context.Context, mono monolith.Monolith) error {
 	if err := rest.RegisterSwagger(mono.Mux()); err != nil {
 		return err
 	}
+
+	handlers.RegisterNotificationHandlers(notificationHandlers, domainDispatcher)
 
 	return nil
 }
